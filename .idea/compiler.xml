@@ -9,8 +9,5 @@
         <module name="WordRecords" />
       </profile>
     </annotationProcessing>
-    <bytecodeTargetLevel>
-      <module name="WordRecords" target="1.8" />
-    </bytecodeTargetLevel>
   </component>
 </project>

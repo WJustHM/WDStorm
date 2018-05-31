@@ -70,7 +70,7 @@ public class WordCountTopolopgyAllInJava {
         public void nextTuple() {
             // 发射该句子给Bolt
             for (int i = 0; i < 4; i++) {
-                this._collector.emit(new Values("djj"));
+                this._collector.emit(new Values("djj"),1);
             }
             Utils.sleep(20000);
         }
@@ -82,17 +82,30 @@ public class WordCountTopolopgyAllInJava {
             outputFieldsDeclarer.declare(new Fields("sentence"));
         }
 
+        @Override
+        public void ack(Object msgId) {
+            System.out.println("djy-2");
+            super.ack(msgId);
+        }
 
+        @Override
+        public void fail(Object msgId) {
+            System.out.println("djy-1");
+            super.fail(msgId);
+        }
     }
 
     public static class SplitSentenceBolt extends BaseBasicBolt {
         //在Bolt初始化时调用
-
+;
         @Override
         public void prepare(Map stormConf, TopologyContext context) {
             super.prepare(stormConf, context);
+
         }
-       //每当从订阅的数据流中接收一个Tuple，都会调用这个方法
+
+
+        //每当从订阅的数据流中接收一个Tuple，都会调用这个方法
         @Override
         public void execute(Tuple tuple, BasicOutputCollector basicOutputCollector) {
             // 接收到一个句子
@@ -103,6 +116,7 @@ public class WordCountTopolopgyAllInJava {
             while (iter.hasMoreElements()) {
                 basicOutputCollector.emit(new Values(iter.nextToken()));
             }
+//            basicOutputCollector
         }
 
         @Override
@@ -110,6 +124,7 @@ public class WordCountTopolopgyAllInJava {
             //表名
             outputFieldsDeclarer.declare(new Fields("word"));
         }
+
     }
 
     public static class WordCountBolt extends BaseBasicBolt {
