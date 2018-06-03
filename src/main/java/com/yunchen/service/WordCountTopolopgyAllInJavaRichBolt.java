@@ -5,9 +5,6 @@ import org.apache.logging.log4j.Logger;
 import org.apache.storm.Config;
 import org.apache.storm.LocalCluster;
 import org.apache.storm.StormSubmitter;
-import org.apache.storm.generated.AlreadyAliveException;
-import org.apache.storm.generated.AuthorizationException;
-import org.apache.storm.generated.InvalidTopologyException;
 import org.apache.storm.spout.SpoutOutputCollector;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
@@ -15,11 +12,15 @@ import org.apache.storm.topology.BasicOutputCollector;
 import org.apache.storm.topology.OutputFieldsDeclarer;
 import org.apache.storm.topology.TopologyBuilder;
 import org.apache.storm.topology.base.BaseBasicBolt;
+import org.apache.storm.topology.base.BaseRichBolt;
 import org.apache.storm.topology.base.BaseRichSpout;
 import org.apache.storm.tuple.Fields;
 import org.apache.storm.tuple.Tuple;
 import org.apache.storm.tuple.Values;
 import org.apache.storm.utils.Utils;
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 //import backtype.storm.Config;
 //import backtype.storm.LocalCluster;
@@ -38,31 +39,25 @@ import org.apache.storm.utils.Utils;
 //import backtype.storm.tuple.Tuple;
 //import backtype.storm.tuple.Values;
 //import backtype.storm.utils.Utils;
-import clojure.lang.IPersistentMap;
-import clojure.lang.Obj;
-
-
-import java.util.*;
 
 /**
  * Hello world!
  */
-public class WordCountTopolopgyAllInJava {
-    private static Logger logger = LogManager.getLogger(WordCountTopolopgyAllInJava.class);
+public class WordCountTopolopgyAllInJavaRichBolt {
+    private static Logger logger = LogManager.getLogger(WordCountTopolopgyAllInJavaRichBolt.class);
 
     // 定义一个喷头，用于产生数据。该类继承自BaseRichSpout
     public static class SentenceSpout extends BaseRichSpout {
         //提供发射tuple的方法
         private SpoutOutputCollector _collector;
-        private String[] sentences = {
-                "my dog has fleas", "i like cold beverages", "dont have a homework", " i bont think i like fleas"
-        };
-        private int index = 0;
+        private ConcurrentHashMap<UUID, Values> pending;
+
 
         //在Spout组件在初始化时调用这个方法
         @Override
         public void open(Map map, TopologyContext topologyContext, SpoutOutputCollector spoutOutputCollector) {
             this._collector = spoutOutputCollector;
+            this.pending = new ConcurrentHashMap<>();
         }
 
         //循环调用
@@ -70,7 +65,10 @@ public class WordCountTopolopgyAllInJava {
         public void nextTuple() {
             // 发射该句子给Bolt
             for (int i = 0; i < 4; i++) {
-                this._collector.emit(new Values("djj"));
+                Values values = new Values("djj");
+                UUID uuid = UUID.randomUUID();
+                this.pending.put(uuid, values);
+                this._collector.emit(values, uuid);
             }
             Utils.sleep(20000);
         }
@@ -84,39 +82,54 @@ public class WordCountTopolopgyAllInJava {
 
         @Override
         public void ack(Object msgId) {
-            System.out.println("djy-2");
             super.ack(msgId);
+            System.out.println("移除元素：" + msgId);
+            //从当前集合移除成功元素
+            this.pending.remove(msgId);
         }
 
         @Override
         public void fail(Object msgId) {
-            System.out.println("djy-1");
             super.fail(msgId);
+            System.out.println("失败元素：" + msgId);
+            this._collector.emit(this.pending.get(msgId), msgId);
         }
     }
 
-    public static class SplitSentenceBolt extends BaseBasicBolt {
+    public static class SplitSentenceBolt extends BaseRichBolt {
+
+        private OutputCollector outputCollector;
+        private int index=0;
+
         //在Bolt初始化时调用
-;
         @Override
-        public void prepare(Map stormConf, TopologyContext context) {
-            super.prepare(stormConf, context);
-
+        public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
+            this.outputCollector = collector;
         }
-
 
         //每当从订阅的数据流中接收一个Tuple，都会调用这个方法
         @Override
-        public void execute(Tuple tuple, BasicOutputCollector basicOutputCollector) {
-            // 接收到一个句子
-            String sentence = tuple.getStringByField("sentence");
-            // 把句子切割为单词
-            StringTokenizer iter = new StringTokenizer(sentence);
-            // 发送每一个单词
-            while (iter.hasMoreElements()) {
-                basicOutputCollector.emit(new Values(iter.nextToken()));
-            }
+        public void execute(Tuple tuple) {
+            try {
+                // 接收到一个句子
+                String sentence = tuple.getStringByField("sentence");
+                // 把句子切割为单词
+                StringTokenizer iter = new StringTokenizer(sentence);
 
+                // 发送每一个单词
+                while (iter.hasMoreElements()) {
+                    index++;
+                    System.out.println("djy:"+index);
+                    if(index==3){
+                        throw new Exception("人为处理失败");
+                    }
+                    outputCollector.emit(tuple, new Values(iter.nextToken()));
+                }
+                outputCollector.ack(tuple);
+            }catch (Exception e){
+                this.outputCollector.fail(tuple);
+                e.printStackTrace();
+            }
         }
 
         @Override
@@ -124,7 +137,6 @@ public class WordCountTopolopgyAllInJava {
             //表名
             outputFieldsDeclarer.declare(new Fields("word"));
         }
-
     }
 
     public static class WordCountBolt extends BaseBasicBolt {
@@ -150,12 +162,12 @@ public class WordCountTopolopgyAllInJava {
             }
             count++;
             this.counts.put(word, count);
-            basicOutputCollector.emit("1",new Values(word, count));
+            basicOutputCollector.emit("1", new Values(word, count));
         }
 
         @Override
         public void declareOutputFields(OutputFieldsDeclarer outputFieldsDeclarer) {
-            outputFieldsDeclarer.declareStream("1",new Fields("word", "count"));
+            outputFieldsDeclarer.declareStream("1", new Fields("word", "count"));
         }
     }
 
@@ -167,7 +179,7 @@ public class WordCountTopolopgyAllInJava {
         public void execute(Tuple tuple, BasicOutputCollector basicOutputCollector) {
             String word = tuple.getStringByField("word");
             Long count = tuple.getLongByField("count");
-            System.out.println(word+" "+count);
+            System.out.println(word + " " + count);
             this.counts.put(word, count);
         }
 
@@ -202,7 +214,7 @@ public class WordCountTopolopgyAllInJava {
         // 设置slot——“count”,你并行度为12，它的数据来源是split的word字段
         //一个Spout  component，4个Executor
         builder.setBolt("WordCountBolt", new WordCountBolt()).fieldsGrouping("SplitSentenceBolt", new Fields("word"));//word类似于reduce，同一个单词会落在同一个线程
-        builder.setBolt("ReportBolt", new ReportBolt()).shuffleGrouping("WordCountBolt","1");////一个Spout  component，1个Executor
+        builder.setBolt("ReportBolt", new ReportBolt()).shuffleGrouping("WordCountBolt", "1");////一个Spout  component，1个Executor
         Config config = new Config();
         config.setNumWorkers(1);//本地不生效
 
@@ -218,7 +230,6 @@ public class WordCountTopolopgyAllInJava {
         }
 
     }
-
 
 
 }

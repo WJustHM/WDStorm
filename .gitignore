@@ -2,7 +2,7 @@
 overlays/
 caches/
 logs/
-idea/
+.idea/
 logs/
 
 ### STS ###
