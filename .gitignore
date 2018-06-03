@@ -1,9 +1,9 @@
-./target/
+target/
 overlays/
 caches/
 logs/
 .idea/
-logs/
+logs/workers-artifacts
 
 ### STS ###
 .apt_generated
@@ -26,3 +26,4 @@ nbbuild/
 dist/
 nbdist/
 .nb-gradle/
+src/test/
